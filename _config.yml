@@ -1,4 +1,3 @@
-theme: minimal-mistakes-jekyll
+theme: jekyll-theme-slate
 title: "Gamescope Deep Dive"
-description: "Your complete guide to Gamescope on Steam Deck - from display stack to frame generation"
-show_downloads: false
+description: "Comprehensive guide to Gamescope on Steam Deck"
