@@ -1,4 +1,3 @@
-theme: jekyll-theme-midnight
+theme: jekyll-theme-slate
 title: "Gamescope Deep Dive"
 description: "Comprehensive guide to Gamescope on Steam Deck"
-show_downloads: true
