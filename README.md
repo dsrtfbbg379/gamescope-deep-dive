@@ -1,4 +1,6 @@
 # Steam Deck: Gamescope Deep Dive
+[![Last Updated](https://img.shields.io/badge/last%20updated-February%202025-blue)](https://github.com/yourusername/gamescope-deep-dive)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 ## Introduction
 
@@ -7,7 +9,7 @@ Comprehensive look into user-facing side of Gamescope with commands and examples
 All examples and commands are produced with help of Claude, please note that I have not gone through and tested all of the commands listed here.
 
 This is first and foremost used as a learning document. You are welcome to correct any errors found within it. I will try to keep this updated with any new info.
- **Last Updated:** [02-12-2026] | **Gamescope Version:** 3.16.14.5
+ **Gamescope Version:** 3.16.14.5
 
 <a id="top"></a>
 ## Table of Contents
