@@ -1,0 +1,23 @@
+@import "{{ site.theme }}";
+
+body {
+  background-color: #1a1a1a;
+  color: #e0e0e0;
+}
+
+.page-header {
+  background: linear-gradient(120deg, #1c3d5a, #2a5a7a);
+}
+
+a {
+  color: #4a9eff;
+}
+
+code {
+  background-color: #2d2d2d;
+  color: #f8f8f2;
+}
+
+pre {
+  background-color: #2d2d2d;
+}
