@@ -111,11 +111,16 @@ This is first and foremost used as a learning document. You are welcome to corre
 ### Network Transparency & Backend Modes
 - [Key Insight: X11/Xwayland is Network-Transparent](#key-insight-x11xwayland-is-network-transparent)
   - [Why This Does NOT Work with Pure Wayland](#why-this-does-not-work-with-pure-wayland)
-- [Gamescope Backend Modes](#gamescope-backend-modes)
-  - [`--backend wayland` or `--backend sdl` (Nested Mode)](#--backend-wayland-or---backend-sdl-nested-mode)
-  - [`--backend drm` or `-e` (Embedded Mode)](#--backend-drm-or--e-embedded-mode)
-  - [Complete Comparison](#complete-comparison)
-  - [Auto-Detection Logic](#auto-detection-logic)
+### Gamescope Backend Modes
+- [Available Backend Modes](#available-backend-modes)
+  - [Backend Selection Logic](#backend-selection-logic)
+- [Backend Implementation Details](#backend-implementation-details)
+  - [DRM Backend](#drm-backend)
+  - [Wayland Backend](#wayland-backend)
+  - [SDL Backend](#sdl-backend)
+  - [OpenVR Backend](#openvr-backend)
+  - [Headless Backend](#headless-backend)
+  - [Conditional Compilation](#conditional-compilation)
 
 ### Setup & Configuration
 - [Setting Up Auto-Login on TTY2](#setting-up-auto-login-on-tty2)
@@ -1617,69 +1622,91 @@ Wayland Clients (must run in same session)
    - Wayland, by design, addresses security flaws by sandboxing application access to both graphical output and input, ensuring that no process outside the compositor can view or control other applications unless explicitly permitted
 
 ---
-
+[← Back to top](#top)
 ## Gamescope Backend Modes
 
-### `--backend wayland` or `--backend sdl` (Nested Mode)
+Gamescope supports multiple backend modes that abstract different display technologies, allowing it to run in various environments from direct hardware access to nested operation within other compositors.
 
-**Requires:** Existing compositor (KDE Plasma, GNOME, etc.)
+### Available Backend Modes
 
-**What it does:**
-```
-Gamescope connects to existing Wayland/X11 compositor
-    ↓
-Creates a window inside that compositor
-    ↓
-Becomes a "nested compositor" (compositor within compositor)
-```
+Gamescope provides five backend implementations:
 
-**Example:** Your TTY1 test - Plasma is the host compositor, gamescope is a client
+| Backend | Purpose | When Used |
+|---------|---------|-----------|
+| **DRM** | Direct rendering to displays using KMS/DRM | Default for standalone/embedded mode |
+| **Wayland** | Nested operation within a Wayland compositor | Auto-selected when `WAYLAND_DISPLAY` is set |
+| **SDL** | Windowed rendering using SDL | Auto-selected when `DISPLAY` is set, fallback for Wayland |
+| **OpenVR** | VR output to SteamVR headsets | Explicit selection with `--backend openvr` |
+| **Headless** | No display output (testing/server) | Explicit selection with `--backend headless` |
 
-### `--backend drm` or `-e` (Embedded Mode)
+### Backend Selection Logic
 
-**Requires:** Direct access to GPU via DRM/KMS (no existing compositor)
-
-**What it does:**
-```
-Gamescope talks DIRECTLY to GPU via /dev/dri/card0
-    ↓
-Takes exclusive control of display
-    ↓
-No other compositor needed
-```
-
-### Complete Comparison
-
-| TTY | Graphical Session | Command | Backend | Result |
-|-----|-------------------|---------|---------|--------|
-| TTY1 | ✅ KDE Plasma | `gamescope --backend wayland vkcube` | Wayland (nested) | ✅ Works - creates window in Plasma |
-| TTY1 | ✅ KDE Plasma | `gamescope -e vkcube` | DRM (embedded) | ❌ Fails - Plasma already owns DRM |
-| TTY2 | ❌ None | `gamescope --backend wayland vkcube` | Wayland (nested) | ❌ Fails - no compositor to connect to |
-| TTY2 | ❌ None | `gamescope -e vkcube` | DRM (embedded) | ✅ Works - direct GPU access |
-
-### Auto-Detection Logic
-
-When you run gamescope without specifying `--backend`, it:
-
-1. Checks for `$WAYLAND_DISPLAY` → If set, use `--backend wayland`
-2. Checks for `$DISPLAY` → If set, use `--backend x11`
-3. Otherwise → Use `--backend drm` (embedded mode)
-
-**On TTY1 (Plasma):**
-```bash
-$ echo $WAYLAND_DISPLAY
-wayland-0
-# gamescope auto-uses --backend wayland (nested)
+Gamescope automatically selects the backend based on environment when `--backend auto` (default):
+```cpp
+if ( eCurrentBackend == gamescope::GamescopeBackend::Auto )
+{
+    if ( g_pOriginalWaylandDisplay != NULL )
+        eCurrentBackend = gamescope::GamescopeBackend::Wayland;
+    else if ( g_pOriginalDisplay != NULL )
+        eCurrentBackend = gamescope::GamescopeBackend::SDL;
+    else
+        eCurrentBackend = gamescope::GamescopeBackend::DRM;
+}
 ```
 
-**On TTY2 (text console):**
-```bash
-$ echo $WAYLAND_DISPLAY
-(empty)
-$ echo $DISPLAY
-(empty)
-# gamescope auto-uses --backend drm (embedded)
-```
+You can explicitly specify a backend using `--backend <name>` where `<name>` is one of: `auto`, `drm`, `sdl`, `wayland`, `openvr`, or `headless`.
+
+## Backend Implementation Details
+
+### DRM Backend
+
+- Provides direct hardware access via DRM/KMS
+- Opens KMS device using `wlsession_open_kms()`
+- Supports HDR, VRR, color management, and hardware cursor
+- Used by default in embedded/standalone mode
+
+### Wayland Backend
+
+- Runs as a Wayland client inside another compositor
+- Implements Wayland protocols for window management and input
+- Supports virtual connectors and nested hints
+- Falls back to SDL if Wayland backend fails to initialize
+
+### SDL Backend
+
+- Creates a window using SDL for cross-platform compatibility
+- Handles input events and window management
+- Can use either Wayland or X11 as the underlying video driver
+- Automatically switches video driver based on compositor support
+
+### OpenVR Backend
+
+- Integrates with SteamVR for VR headset output
+- Manages VR overlays and input handling
+- Supports various VR-specific options like overlay customization
+- Requires OpenVR library to be available
+
+### Headless Backend
+
+- Minimal implementation with no actual display output
+- Useful for testing or automated scenarios
+- Still initializes Vulkan for rendering operations
+- Defaults to 720p if no dimensions specified
+
+### Conditional Compilation
+
+Backends are conditionally compiled based on available dependencies:
+
+- DRM backend requires `libdrm` and `libliftoff`
+- SDL backend requires `SDL2`
+- OpenVR backend requires OpenVR library
+
+### Notes
+
+- All backends implement the same `IBackend` interface, ensuring consistent behavior
+- The backend system is designed to be extensible for future display technologies
+- Steam integration (`-e`) works with any backend and doesn't affect backend selection
+- Some features like HDR and VRR are only available on specific backends that support them
 
 ---
 [← Back to top](#top)
@@ -2282,6 +2309,7 @@ export __GL_MaxFramesAllowed=1
 ### Credits & Acknowledgments
 - Examples and explanations developed with assistance from Claude (Anthropic)
 - Quite possibly the most complete source of information on gamescope, from render to build system https://deepwiki.com/ValveSoftware/gamescope
+- Arch wiki/gamescope - "May I say no more?" https://wiki.archlinux.org/title/Gamescope
 - Steam Tinker Launch - Great tool to streamline steam to gamescope integration\
 https://github.com/sonic2kk/steamtinkerlaunch/wiki/Steam-Deck
 - ScopeBuddy - A manager script to make gamescope easier to use on desktop\
