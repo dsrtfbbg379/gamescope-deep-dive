@@ -9,7 +9,7 @@ Comprehensive look into user-facing side of Gamescope with commands and examples
 All examples and commands are produced with help of Claude, please note that I have not gone through and tested all of the commands listed here.
 
 This is first and foremost used as a learning document. You are welcome to correct any errors found within it. I will try to keep this updated with any new info.
- **Gamescope Version:** 3.16.14.5
+
 
 <a id="top"></a>
 ## Table of Contents
@@ -28,6 +28,16 @@ This is first and foremost used as a learning document. You are welcome to corre
   - [Layer 7: Desktop Compositor Displays](#layer-7-desktop-compositor-displays)
   - [What Changes in Gaming Mode (Embedded Mode)](#what-changes-in-gaming-mode-embedded-mode)
   - [Essential Read 1](#essential-read-1)
+  
+### Gamescope Backend Modes
+- [Available Backend Modes](#available-backend-modes)
+  - [Backend Selection Logic](#backend-selection-logic)
+- [Backend Implementation Details](#backend-implementation-details)
+  - [DRM Backend](#drm-backend)
+  - [Wayland Backend](#wayland-backend)
+  - [SDL Backend](#sdl-backend)
+  - [OpenVR Backend](#openvr-backend)
+  - [Headless Backend](#headless-backend)
 
 ### DRM and Hardware Control
 - [How DRM Actually Works](#how-drm-actually-works)
@@ -40,20 +50,7 @@ This is first and foremost used as a learning document. You are welcome to corre
   - [Problem 1: Headless = No Display Output](#problem-1-headless--no-display-output)
   - [Problem 2: TTYs Don't Share Framebuffers](#problem-2-ttys-dont-share-framebuffers)
   - [Problem 3: DRM/KMS is Exclusive](#problem-3-drmkms-is-exclusive)
-
-### Gamescope Capabilities: CAP_SYS_NICE
- - [What is CAP_SYS_NICE?](#what-is-cap_sys_nice)
-   - [Step 1: Check If Gamescope Has CAP_SYS_NICE](#step-1-check-if-gamescope-has-cap_sys_nice-capability)
-   - [Step 2: Check Runtime Messages](#step-2-check-gamescopes-runtime-messages)
-   - [Step 3: Check Process Priority](#step-3-check-gamescopes-actual-process-priority-while-running)
-   - [Step 4: Check Thread Priorities (Advanced)](#step-4-check-thread-priorities-advanced)
-   - [Step 5: Check Systemd Service](#step-5-check-systemd-service-configuration-gaming-mode)
-   - [When CAP_SYS_NICE Matters](#when-cap_sys_nice-matters-most)
-   - [How to Grant CAP_SYS_NICE](#how-to-grant-cap_sys_nice-properly)
-- [Important Caveats](#️-important-caveats)
-- [Quick Diagnostic Script](#quick-diagnostic-script)
-- [Understanding Thread Breakdown](#understanding-thread-breakdown)
-
+  
 ### Execution Flow
 - [Command Breakdown: Execution Flow](#command-breakdown-execution-flow)
   - [Part 1: Environment Variables (Before gamescope)](#part-1-environment-variables-before-gamescope)
@@ -89,6 +86,19 @@ This is first and foremost used as a learning document. You are welcome to corre
   - [Simplified Script Example](#simplified-script-example)
   - [Verification](#verification)
 
+### Gamescope Capabilities: CAP_SYS_NICE
+ - [What is CAP_SYS_NICE?](#what-is-cap_sys_nice)
+   - [Step 1: Check If Gamescope Has CAP_SYS_NICE](#step-1-check-if-gamescope-has-cap_sys_nice-capability)
+   - [Step 2: Check Runtime Messages](#step-2-check-gamescopes-runtime-messages)
+   - [Step 3: Check Process Priority](#step-3-check-gamescopes-actual-process-priority-while-running)
+   - [Step 4: Check Thread Priorities (Advanced)](#step-4-check-thread-priorities-advanced)
+   - [Step 5: Check Systemd Service](#step-5-check-systemd-service-configuration-gaming-mode)
+   - [When CAP_SYS_NICE Matters](#when-cap_sys_nice-matters-most)
+   - [How to Grant CAP_SYS_NICE](#how-to-grant-cap_sys_nice-properly)
+- [Important Caveats](#️-important-caveats)
+- [Quick Diagnostic Script](#quick-diagnostic-script)
+- [Understanding Thread Breakdown](#understanding-thread-breakdown)
+
 ### TTY Deep Dive
 - [What is a TTY? Historical Context → Modern Implementation](#historical-context--modern-implementation)
 - [Types of TTYs in Modern Linux](#types-of-ttys-in-modern-linux)
@@ -96,8 +106,8 @@ This is first and foremost used as a learning document. You are welcome to corre
   - [2. Pseudo-TTYs (PTY) (/dev/pts/0, /dev/pts/1, etc.)](#2-pseudo-ttys-pty-devpts0-devpts1-etc)
   - [3. Special TTY Devices](#3-special-tty-devices)
 - [Critical Question: What Do TTYs Inherit and Share?](#critical-question-what-do-ttys-inherit-and-share)
-  - [✅ SHARED Across ALL TTYs (System-Wide)](#-shared-across-all-ttys-system-wide)
-  - [❌ NOT SHARED (TTY-Specific)](#-not-shared-tty-specific)
+  - [SHARED Across ALL TTYs (System-Wide)](#-shared-across-all-ttys-system-wide)
+  - [NOT SHARED (TTY-Specific)](#-not-shared-tty-specific)
 - [Practical Example: What Happens When You Switch from TTY2 → TTY3](#practical-example-what-happens-when-you-switch-from-tty2--tty3)
 
 ### Using TTY to utilize Direct Mode
@@ -111,16 +121,6 @@ This is first and foremost used as a learning document. You are welcome to corre
 ### Network Transparency & Backend Modes
 - [Key Insight: X11/Xwayland is Network-Transparent](#key-insight-x11xwayland-is-network-transparent)
   - [Why This Does NOT Work with Pure Wayland](#why-this-does-not-work-with-pure-wayland)
-### Gamescope Backend Modes
-- [Available Backend Modes](#available-backend-modes)
-  - [Backend Selection Logic](#backend-selection-logic)
-- [Backend Implementation Details](#backend-implementation-details)
-  - [DRM Backend](#drm-backend)
-  - [Wayland Backend](#wayland-backend)
-  - [SDL Backend](#sdl-backend)
-  - [OpenVR Backend](#openvr-backend)
-  - [Headless Backend](#headless-backend)
-  - [Conditional Compilation](#conditional-compilation)
 
 ### Setup & Configuration
 - [Setting Up Auto-Login on TTY2](#setting-up-auto-login-on-tty2)
@@ -379,6 +379,78 @@ https://github.com/PancakeTAS/lsfg-vk/wiki/Gamescope-Compatibility/760be621450d2
 
 ---
 [← Back to top](#top)
+## Gamescope Backend Modes
+
+Gamescope supports multiple backend modes that abstract different display technologies, allowing it to run in various environments from direct hardware access to nested operation within other compositors.
+
+### Available Backend Modes
+
+Gamescope provides five backend implementations:
+
+| Backend | Purpose | When Used |
+|---------|---------|-----------|
+| **DRM** | Direct rendering to displays using KMS/DRM | Default for standalone/embedded mode |
+| **Wayland** | Nested operation within a Wayland compositor | Auto-selected when `WAYLAND_DISPLAY` is set |
+| **SDL** | Windowed rendering using SDL | Auto-selected when `DISPLAY` is set, fallback for Wayland |
+| **OpenVR** | VR output to SteamVR headsets | Explicit selection with `--backend openvr` |
+| **Headless** | No display output (testing/server) | Explicit selection with `--backend headless` |
+
+### Backend Selection Logic
+
+Gamescope automatically selects the backend based on environment when `--backend auto` (default):
+```cpp
+if ( eCurrentBackend == gamescope::GamescopeBackend::Auto )
+{
+    if ( g_pOriginalWaylandDisplay != NULL )
+        eCurrentBackend = gamescope::GamescopeBackend::Wayland;
+    else if ( g_pOriginalDisplay != NULL )
+        eCurrentBackend = gamescope::GamescopeBackend::SDL;
+    else
+        eCurrentBackend = gamescope::GamescopeBackend::DRM;
+}
+```
+
+You can explicitly specify a backend using `--backend <name>` where `<name>` is one of: `auto`, `drm`, `sdl`, `wayland`, `openvr`, or `headless`.
+
+## Backend Implementation Details
+
+### DRM Backend
+
+- Provides direct hardware access via DRM/KMS
+- Opens KMS device using `wlsession_open_kms()`
+- Supports HDR, VRR, color management, and hardware cursor
+- Used by default in embedded/standalone mode
+
+### Wayland Backend
+
+- Runs as a Wayland client inside another compositor
+- Implements Wayland protocols for window management and input
+- Supports virtual connectors and nested hints
+- Falls back to SDL if Wayland backend fails to initialize
+
+### SDL Backend
+
+- Creates a window using SDL for cross-platform compatibility
+- Handles input events and window management
+- Can use either Wayland or X11 as the underlying video driver
+- Automatically switches video driver based on compositor support
+
+### OpenVR Backend
+
+- Integrates with SteamVR for VR headset output
+- Manages VR overlays and input handling
+- Supports various VR-specific options like overlay customization
+- Requires OpenVR library to be available
+
+### Headless Backend
+
+- Minimal implementation with no actual display output
+- Useful for testing or automated scenarios
+- Still initializes Vulkan for rendering operations
+- Defaults to 720p if no dimensions specified
+
+---
+[← Back to top](#top)
 ## How DRM Actually Works
 
 The Direct Rendering Manager resides in kernel space and controls the physical display hardware directly. Here's what actually happens:
@@ -395,14 +467,14 @@ Sends frames directly to GPU → Display Pipeline → Your LCD Panel
 
 ### Why You Can't Send DRM Output from TTY1 to Display on TTY2
 
-When gamescope runs in DRM mode (embedded mode with `-e` or `--backend drm`):
+When gamescope runs in DRM mode (embedded mode with `--backend drm` or no display server):
 
 1. It becomes the DRM master - exclusive control of the GPU
 2. It controls the physical display - not a virtual framebuffer
 3. Only ONE process can be DRM master at a time
 
 ```
-TTY1: gamescope -e (DRM master)
+TTY1: gamescope --backend drm (DRM master)
   ↓
 Controls /dev/dri/card0 EXCLUSIVELY
   ↓
@@ -510,252 +582,7 @@ Gamescope embedded mode uses DRM/KMS, which requires exclusive access to the dis
 **Note:** Headless mode could be experimental and buggy. Not recommended for local gaming.
 
 ---
-[← Back to top](#top)
-## Gamescope Capabilities: CAP_SYS_NICE
 
-### What is CAP_SYS_NICE?
-
-CAP_SYS_NICE is a Linux capability that allows a process to set higher scheduling priorities for itself. For gamescope, this means it can run critical threads with realtime FIFO scheduling, which significantly reduces latency and improves frame pacing.
-
-**Quick links:**
-- [How to check if you have it](#step-1-check-if-gamescope-has-cap_sys_nice-capability)
-- [How to enable it](#how-to-grant-cap_sys_nice-properly)
-- [When you need it](#when-cap_sys_nice-matters-most)
-
----
-
-### Step 1: Check If Gamescope Has CAP_SYS_NICE Capability
-
-Run this command:
-```bash
-getcap $(which gamescope)
-```
-
-**Expected outputs:**
-
-**If CAP_SYS_NICE is set:**
-```
-/usr/bin/gamescope cap_sys_nice=eip
-```
-
-**If NOT set (most common in Desktop Mode):**
-```
-(no output or "= cap_sys_nice+eip")
-```
-
-**Next steps:**
-- If set: [Verify it's working](#step-3-check-gamescopes-actual-process-priority-while-running)
-- If not set: [Learn when you need it](#when-cap_sys_nice-matters-most) or [How to enable it](#how-to-grant-cap_sys_nice-properly)
-
----
-
-### Step 2: Check Gamescope's Runtime Messages
-
-When you launch gamescope, watch the console output:
-```bash
-gamescope -W 1920 -H 1080 -f --backend wayland -- vkcube
-```
-
-**If CAP_SYS_NICE is missing, you'll see:**
-```
-No CAP_SYS_NICE, falling back to regular-priority compute and threads.
-Performance will be affected.
-```
-
-**If CAP_SYS_NICE is present:**
-```
-(no warning about CAP_SYS_NICE)
-```
-
----
-
-### Step 3: Check Gamescope's Actual Process Priority While Running
-
-While gamescope is running, open another terminal and run:
-```bash
-ps -eo pid,ni,comm | grep gamescope
-```
-
-**Output explanation:**
-```
-  PID  NI COMMAND
- 12345   0 gamescope         ← Nice value 0 (normal priority, CAP_SYS_NICE not working)
- 12345 -10 gamescope         ← Nice value -10 (elevated priority, CAP_SYS_NICE working!)
-```
-
-- `NI = 0`: Normal priority (CAP_SYS_NICE not working or not set)
-- `NI = -10` or lower: Elevated priority (CAP_SYS_NICE working)
-
-**Want more detail?** See [Thread Priorities (Advanced)](#step-4-check-thread-priorities-advanced)
-
----
-
-### Step 4: Check Thread Priorities (Advanced)
-
-For a more detailed view of gamescope's thread scheduling:
-```bash
-ps -eLo pid,tid,class,ni,comm | grep gamescope
-```
-
-**Expected output with CAP_SYS_NICE working:**
-```
-  PID   TID CLS  NI COMMAND
-12345 12345  TS -10 gamescope        ← Main thread with nice -10
-12345 12346  FF   0 gamescope:cs0    ← Realtime FIFO thread (compute)
-12345 12347  FF   0 gamescope:cs1    ← Realtime FIFO thread
-```
-
-**Without CAP_SYS_NICE:**
-```
-  PID   TID CLS  NI COMMAND
-12345 12345  TS   0 gamescope        ← Normal priority
-12345 12346  TS   0 gamescope:cs0    ← No realtime priority
-```
-
-**Legend:**
-- `CLS = TS`: Normal time-sharing scheduler
-- `CLS = FF`: FIFO realtime scheduler (best for gamescope)
-- `NI`: Nice value (lower = higher priority)
-
-**Learn more:** [Understanding Thread Breakdown](#understanding-thread-breakdown)
-
----
-
-### Step 5: Check Systemd Service Configuration (Gaming Mode)
-```bash
-systemctl cat gamescope-session.service
-```
-
-You'll likely see something like:
-```ini
-[Service]
-AmbientCapabilities=CAP_SYS_NICE CAP_SYS_RESOURCE
-CapabilityBoundingSet=CAP_SYS_NICE CAP_SYS_RESOURCE
-```
-
-This shows that in Gaming Mode, CAP_SYS_NICE is enabled by default through systemd.
-
----
-
-### When CAP_SYS_NICE Matters Most
-
-**You NEED it for:**
-- High framerate targets (120+ FPS)
-- VRR/Adaptive sync scenarios
-- CPU-bound games
-- Frame generation (like lsfg-vk!) - you want consistent scheduling
-
-**It matters less for:**
-- 30-60 FPS targets
-- GPU-bound games
-- Single-threaded games
-
-**Ready to enable it?** [Jump to How to Grant CAP_SYS_NICE](#how-to-grant-cap_sys_nice-properly)
-
----
-
-### How to Grant CAP_SYS_NICE Properly
-
-If you want to enable it:
-```bash
-sudo setcap 'CAP_SYS_NICE=+eip' $(which gamescope)
-```
-
-Verify it worked:
-```bash
-getcap $(which gamescope)
-```
-
-Should show: `/usr/bin/gamescope cap_sys_nice=eip`
-
-**⚠️ IMPORTANT:** Read the [caveats below](#️-important-caveats) before enabling!
-
-**Verify it's working:** [Check Process Priority](#step-3-check-gamescopes-actual-process-priority-while-running)
-
----
-
-### ⚠️ Important Caveats
-
-Using `setcap` causes some Vulkan environment variables to be ignored, such as `MESA_VK_DEVICE_SELECT`. Also, it can stop the Steam In-Game Overlay from working.
-
-**Workaround for overlay:**
-
-You can restore Steam functionality by bypassing `LD_PRELOAD` on gamescope and passing it to the command:
-```bash
-gamescope -- env LD_PRELOAD="$LD_PRELOAD" %command%
-```
-
-**Note:** Your current wrapper already has `LD_PRELOAD=""` which clears it, so you might lose Steam overlay if you enable CAP_SYS_NICE.
-
-**Related:** See [Verification section](#verification) for checking environment variables
-
----
-
-### Quick Diagnostic Script
-
-Save this as `~/check-gamescope-priority.sh`:
-```bash
-#!/bin/bash
-echo "=== Gamescope CAP_SYS_NICE Check ==="
-echo ""
-echo "1. Checking binary capabilities:"
-getcap $(which gamescope)
-echo ""
-echo "2. Gamescope running processes:"
-ps -eo pid,ni,comm | grep gamescope
-echo ""
-echo "3. Gamescope thread scheduling:"
-ps -eLo pid,tid,class,ni,comm | grep gamescope | head -5
-echo ""
-echo "=== Interpretation ==="
-echo "NI = 0: Normal priority (no CAP_SYS_NICE)"
-echo "NI < 0: Elevated priority (CAP_SYS_NICE working)"
-echo "CLS = TS: Normal scheduler"
-echo "CLS = FF: Realtime FIFO scheduler (best)"
-```
-
-Make it executable:
-```bash
-chmod +x ~/check-gamescope-priority.sh
-```
-
-Run it:
-```bash
-~/check-gamescope-priority.sh
-```
-
-**What the output means:** [Understanding Thread Breakdown](#understanding-thread-breakdown)
-
----
-
-### Understanding Thread Breakdown
-
-Example output with CAP_SYS_NICE enabled:
-```
-  PID   TID CLS  NI COMMAND
-45061 45061  TS -20 gamescope-wl     ← Main Wayland compositor thread (MAX PRIORITY)
-45061 45062  TS   0 gamescope-eis    ← EIS (input emulation) - normal priority
-45061 45063  TS   0 gamescope_img    ← Image processing - normal priority
-45061 45064  TS -20 gamescope        ← Core gamescope thread (MAX PRIORITY)
-45061 45086  TS -20 gamescope-pw     ← PipeWire audio thread (MAX PRIORITY)
-45061 45087  TS -20 gamescope-xwm    ← X Window Manager thread (MAX PRIORITY)
-45061 45089  TS -20 gamescope-wait   ← Wait/sync thread (MAX PRIORITY)
-```
-
-**Key threads that benefit from high priority:**
-- `gamescope-wl`: Main compositor thread handling frame composition
-- `gamescope`: Core rendering and frame delivery
-- `gamescope-pw`: Audio synchronization (critical for AV sync)
-- `gamescope-xwm`: Window management (input handling)
-- `gamescope-wait`: Frame timing and vsync coordination
-
-**Threads that don't need high priority:**
-- `gamescope-eis`: Input emulation (best effort is fine)
-- `gamescope_img`: Image processing (can be delayed)
-
-**Back to top:** [CAP_SYS_NICE Table of Contents](#table-of-contents---cap_sys_nice-section)
-
----
 [← Back to top](#top)
 #### Next: Execution Flow
 
@@ -1182,7 +1009,7 @@ Environment="LSFGVK_PROFILE=test"
 
 **Yes, mostly!** Let me break down each variable:
 
-#### Variables That Only Affect Steam Client
+### Variables That Only Affect Steam Client
 
 These variables tell the Steam client to enable certain UI features and functionality:
 
@@ -1208,30 +1035,13 @@ These variables tell the Steam client to enable certain UI features and function
 - What it does: Shows VRR (Variable Refresh Rate) toggle in Steam UI
 - Do you need it? Only if you have a VRR/FreeSync/G-Sync monitor
 
-#### Variables That Affect Gamescope/Games
+### Variables That Affect Gamescope/Games
 
 **ENABLE_GAMESCOPE_WSI=1**
 - What it does: Enables gamescope's Wayland/Vulkan WSI layer
 - Effect: Allows gamescope to intercept Vulkan swapchains
 - Does it affect games? YES - critical for gamescope to work
 - Do you need it? YES - you already discovered this!
-
-#### How to Actually Enable FSR/NIS Upscaling
-
-FSR/NIS is controlled by gamescope command-line flags, not environment variables:
-
-```bash
-# Enable FSR upscaling
-gamescope -W 1920 -H 1080 -w 1280 -h 800 -F fsr -- game
-
-# Enable NIS upscaling
-gamescope -W 1920 -H 1080 -w 1280 -h 800 -F nis -- game
-
-# No upscaling (linear)
-gamescope -W 1920 -H 1080 -w 1280 -h 800 -F linear -- game
-```
-
-The `-F` (filtering) flag controls the upscaling algorithm. This works whether or not `STEAM_GAMESCOPE_FANCY_SCALING_SUPPORT` is set!
 
 **Your use case (TTY with manual gamescope):**
 - You're launching gamescope manually with your own flags
@@ -1296,6 +1106,253 @@ MESA_VK_WSI_PRESENT_MODE=immediate
 If you DON'T see them, it means CAP_SYS_NICE is causing environment variable sanitization.
 
 ---
+
+[← Back to top](#top)
+## Gamescope Capabilities: CAP_SYS_NICE
+
+### What is CAP_SYS_NICE?
+
+CAP_SYS_NICE is a Linux capability that allows a process to set higher scheduling priorities for itself. For gamescope, this means it can run critical threads with realtime FIFO scheduling, which significantly reduces latency and improves frame pacing.
+
+**Quick links:**
+- [How to check if you have it](#step-1-check-if-gamescope-has-cap_sys_nice-capability)
+- [How to enable it](#how-to-grant-cap_sys_nice-properly)
+- [When you need it](#when-cap_sys_nice-matters-most)
+
+---
+
+### Step 1: Check If Gamescope Has CAP_SYS_NICE Capability
+
+Run this command:
+```bash
+getcap $(which gamescope)
+```
+
+**Expected outputs:**
+
+**If CAP_SYS_NICE is set:**
+```
+/usr/bin/gamescope cap_sys_nice=eip
+```
+
+**If NOT set (most common in Desktop Mode):**
+```
+(no output or "= cap_sys_nice+eip")
+```
+
+**Next steps:**
+- If set: [Verify it's working](#step-3-check-gamescopes-actual-process-priority-while-running)
+- If not set: [Learn when you need it](#when-cap_sys_nice-matters-most) or [How to enable it](#how-to-grant-cap_sys_nice-properly)
+
+---
+
+### Step 2: Check Gamescope's Runtime Messages
+
+When you launch gamescope, watch the console output:
+```bash
+gamescope -W 1920 -H 1080 -f --backend wayland -- vkcube
+```
+
+**If CAP_SYS_NICE is missing, you'll see:**
+```
+No CAP_SYS_NICE, falling back to regular-priority compute and threads.
+Performance will be affected.
+```
+
+**If CAP_SYS_NICE is present:**
+```
+(no warning about CAP_SYS_NICE)
+```
+
+---
+
+### Step 3: Check Gamescope's Actual Process Priority While Running
+
+While gamescope is running, open another terminal and run:
+```bash
+ps -eo pid,ni,comm | grep gamescope
+```
+
+**Output explanation:**
+```
+  PID  NI COMMAND
+ 12345   0 gamescope         ← Nice value 0 (normal priority, CAP_SYS_NICE not working)
+ 12345 -10 gamescope         ← Nice value -10 (elevated priority, CAP_SYS_NICE working!)
+```
+
+- `NI = 0`: Normal priority (CAP_SYS_NICE not working or not set)
+- `NI = -10` or lower: Elevated priority (CAP_SYS_NICE working)
+
+**Want more detail?** See [Thread Priorities (Advanced)](#step-4-check-thread-priorities-advanced)
+
+---
+
+### Step 4: Check Thread Priorities (Advanced)
+
+For a more detailed view of gamescope's thread scheduling:
+```bash
+ps -eLo pid,tid,class,ni,comm | grep gamescope
+```
+
+**Expected output with CAP_SYS_NICE working:**
+```
+  PID   TID CLS  NI COMMAND
+12345 12345  TS -10 gamescope        ← Main thread with nice -10
+12345 12346  FF   0 gamescope:cs0    ← Realtime FIFO thread (compute)
+12345 12347  FF   0 gamescope:cs1    ← Realtime FIFO thread
+```
+
+**Without CAP_SYS_NICE:**
+```
+  PID   TID CLS  NI COMMAND
+12345 12345  TS   0 gamescope        ← Normal priority
+12345 12346  TS   0 gamescope:cs0    ← No realtime priority
+```
+
+**Legend:**
+- `CLS = TS`: Normal time-sharing scheduler
+- `CLS = FF`: FIFO realtime scheduler (best for gamescope)
+- `NI`: Nice value (lower = higher priority)
+
+**Learn more:** [Understanding Thread Breakdown](#understanding-thread-breakdown)
+
+---
+
+### Step 5: Check Systemd Service Configuration (Gaming Mode)
+```bash
+systemctl cat gamescope-session.service
+```
+
+You'll likely see something like:
+```ini
+[Service]
+AmbientCapabilities=CAP_SYS_NICE CAP_SYS_RESOURCE
+CapabilityBoundingSet=CAP_SYS_NICE CAP_SYS_RESOURCE
+```
+
+This shows that in Gaming Mode, CAP_SYS_NICE is enabled by default through systemd.
+
+---
+
+### When CAP_SYS_NICE Matters Most
+
+**You NEED it for:**
+- High framerate targets (120+ FPS)
+- VRR/Adaptive sync scenarios
+- CPU-bound games
+- Frame generation (like lsfg-vk!) - you want consistent scheduling
+
+**It matters less for:**
+- 30-60 FPS targets
+- GPU-bound games
+- Single-threaded games
+
+**Ready to enable it?** [Jump to How to Grant CAP_SYS_NICE](#how-to-grant-cap_sys_nice-properly)
+
+---
+
+### How to Grant CAP_SYS_NICE Properly
+
+If you want to enable it:
+```bash
+sudo setcap 'CAP_SYS_NICE=+eip' $(which gamescope)
+```
+
+Verify it worked:
+```bash
+getcap $(which gamescope)
+```
+
+Should show: `/usr/bin/gamescope cap_sys_nice=eip`
+
+**⚠️ IMPORTANT:** Read the [caveats below](#️-important-caveats) before enabling!
+
+**Verify it's working:** [Check Process Priority](#step-3-check-gamescopes-actual-process-priority-while-running)
+
+---
+
+### ⚠️ Important Caveats
+
+Using `setcap` causes some Vulkan environment variables to be ignored, such as `MESA_VK_DEVICE_SELECT`. Also, it can stop the Steam In-Game Overlay from working.
+
+**Workaround for overlay:**
+
+You can restore Steam functionality by bypassing `LD_PRELOAD` on gamescope and passing it to the command:
+```bash
+gamescope -- env LD_PRELOAD="$LD_PRELOAD" %command%
+```
+
+**Note:** Your current wrapper already has `LD_PRELOAD=""` which clears it, so you might lose Steam overlay if you enable CAP_SYS_NICE.
+
+**Related:** See [Verification section](#verification) for checking environment variables
+
+---
+
+### Quick Diagnostic Script
+
+Save this as `~/check-gamescope-priority.sh`:
+```bash
+#!/bin/bash
+echo "=== Gamescope CAP_SYS_NICE Check ==="
+echo ""
+echo "1. Checking binary capabilities:"
+getcap $(which gamescope)
+echo ""
+echo "2. Gamescope running processes:"
+ps -eo pid,ni,comm | grep gamescope
+echo ""
+echo "3. Gamescope thread scheduling:"
+ps -eLo pid,tid,class,ni,comm | grep gamescope | head -5
+echo ""
+echo "=== Interpretation ==="
+echo "NI = 0: Normal priority (no CAP_SYS_NICE)"
+echo "NI < 0: Elevated priority (CAP_SYS_NICE working)"
+echo "CLS = TS: Normal scheduler"
+echo "CLS = FF: Realtime FIFO scheduler (best)"
+```
+
+Make it executable:
+```bash
+chmod +x ~/check-gamescope-priority.sh
+```
+
+Run it:
+```bash
+~/check-gamescope-priority.sh
+```
+
+**What the output means:** [Understanding Thread Breakdown](#understanding-thread-breakdown)
+
+---
+
+### Understanding Thread Breakdown
+
+Example output with CAP_SYS_NICE enabled:
+```
+  PID   TID CLS  NI COMMAND
+45061 45061  TS -20 gamescope-wl     ← Main Wayland compositor thread (MAX PRIORITY)
+45061 45062  TS   0 gamescope-eis    ← EIS (input emulation) - normal priority
+45061 45063  TS   0 gamescope_img    ← Image processing - normal priority
+45061 45064  TS -20 gamescope        ← Core gamescope thread (MAX PRIORITY)
+45061 45086  TS -20 gamescope-pw     ← PipeWire audio thread (MAX PRIORITY)
+45061 45087  TS -20 gamescope-xwm    ← X Window Manager thread (MAX PRIORITY)
+45061 45089  TS -20 gamescope-wait   ← Wait/sync thread (MAX PRIORITY)
+```
+
+**Key threads that benefit from high priority:**
+- `gamescope-wl`: Main compositor thread handling frame composition
+- `gamescope`: Core rendering and frame delivery
+- `gamescope-pw`: Audio synchronization (critical for AV sync)
+- `gamescope-xwm`: Window management (input handling)
+- `gamescope-wait`: Frame timing and vsync coordination
+
+**Threads that don't need high priority:**
+- `gamescope-eis`: Input emulation (best effort is fine)
+- `gamescope_img`: Image processing (can be delayed)
+
+**Back to top:** [CAP_SYS_NICE Table of Contents](#table-of-contents---cap_sys_nice-section)
+
+---
 [← Back to top](#top)
 ## What is a TTY?
 
@@ -1348,7 +1405,7 @@ When you open Konsole in Desktop Mode and type `tty`, you'll see something like 
 
 This is the KEY question for your gamescope use case! Here's the breakdown:
 
-#### ✅ SHARED Across ALL TTYs (System-Wide)
+#### SHARED Across ALL TTYs (System-Wide)
 
 These things are global and available to all TTYs:
 
@@ -1371,7 +1428,7 @@ These things are global and available to all TTYs:
 - `/dev/shm` (shared memory) is global
 - Unix sockets can be accessed from any TTY
 
-#### ❌ NOT SHARED (TTY-Specific)
+#### NOT SHARED (TTY-Specific)
 
 These things are isolated per TTY session:
 
@@ -1622,93 +1679,7 @@ Wayland Clients (must run in same session)
    - Wayland, by design, addresses security flaws by sandboxing application access to both graphical output and input, ensuring that no process outside the compositor can view or control other applications unless explicitly permitted
 
 ---
-[← Back to top](#top)
-## Gamescope Backend Modes
 
-Gamescope supports multiple backend modes that abstract different display technologies, allowing it to run in various environments from direct hardware access to nested operation within other compositors.
-
-### Available Backend Modes
-
-Gamescope provides five backend implementations:
-
-| Backend | Purpose | When Used |
-|---------|---------|-----------|
-| **DRM** | Direct rendering to displays using KMS/DRM | Default for standalone/embedded mode |
-| **Wayland** | Nested operation within a Wayland compositor | Auto-selected when `WAYLAND_DISPLAY` is set |
-| **SDL** | Windowed rendering using SDL | Auto-selected when `DISPLAY` is set, fallback for Wayland |
-| **OpenVR** | VR output to SteamVR headsets | Explicit selection with `--backend openvr` |
-| **Headless** | No display output (testing/server) | Explicit selection with `--backend headless` |
-
-### Backend Selection Logic
-
-Gamescope automatically selects the backend based on environment when `--backend auto` (default):
-```cpp
-if ( eCurrentBackend == gamescope::GamescopeBackend::Auto )
-{
-    if ( g_pOriginalWaylandDisplay != NULL )
-        eCurrentBackend = gamescope::GamescopeBackend::Wayland;
-    else if ( g_pOriginalDisplay != NULL )
-        eCurrentBackend = gamescope::GamescopeBackend::SDL;
-    else
-        eCurrentBackend = gamescope::GamescopeBackend::DRM;
-}
-```
-
-You can explicitly specify a backend using `--backend <name>` where `<name>` is one of: `auto`, `drm`, `sdl`, `wayland`, `openvr`, or `headless`.
-
-## Backend Implementation Details
-
-### DRM Backend
-
-- Provides direct hardware access via DRM/KMS
-- Opens KMS device using `wlsession_open_kms()`
-- Supports HDR, VRR, color management, and hardware cursor
-- Used by default in embedded/standalone mode
-
-### Wayland Backend
-
-- Runs as a Wayland client inside another compositor
-- Implements Wayland protocols for window management and input
-- Supports virtual connectors and nested hints
-- Falls back to SDL if Wayland backend fails to initialize
-
-### SDL Backend
-
-- Creates a window using SDL for cross-platform compatibility
-- Handles input events and window management
-- Can use either Wayland or X11 as the underlying video driver
-- Automatically switches video driver based on compositor support
-
-### OpenVR Backend
-
-- Integrates with SteamVR for VR headset output
-- Manages VR overlays and input handling
-- Supports various VR-specific options like overlay customization
-- Requires OpenVR library to be available
-
-### Headless Backend
-
-- Minimal implementation with no actual display output
-- Useful for testing or automated scenarios
-- Still initializes Vulkan for rendering operations
-- Defaults to 720p if no dimensions specified
-
-### Conditional Compilation
-
-Backends are conditionally compiled based on available dependencies:
-
-- DRM backend requires `libdrm` and `libliftoff`
-- SDL backend requires `SDL2`
-- OpenVR backend requires OpenVR library
-
-### Notes
-
-- All backends implement the same `IBackend` interface, ensuring consistent behavior
-- The backend system is designed to be extensible for future display technologies
-- Steam integration (`-e`) works with any backend and doesn't affect backend selection
-- Some features like HDR and VRR are only available on specific backends that support them
-
----
 [← Back to top](#top)
 ## Setting Up Auto-Login on TTY2
 
@@ -2308,8 +2279,10 @@ export __GL_MaxFramesAllowed=1
 - https://deepwiki.com/ValveSoftware/gamescope
 ### Credits & Acknowledgments
 - Examples and explanations developed with assistance from Claude (Anthropic)
-- Quite possibly the most complete source of information on gamescope, from render to build system https://deepwiki.com/ValveSoftware/gamescope
-- Arch wiki/gamescope - "May I say no more?" https://wiki.archlinux.org/title/Gamescope
+- Quite possibly the most complete source of information on gamescope, from render to build system\
+https://deepwiki.com/ValveSoftware/gamescope
+- Arch wiki/gamescope - "May I say no more?"\
+https://wiki.archlinux.org/title/Gamescope
 - Steam Tinker Launch - Great tool to streamline steam to gamescope integration\
 https://github.com/sonic2kk/steamtinkerlaunch/wiki/Steam-Deck
 - ScopeBuddy - A manager script to make gamescope easier to use on desktop\
